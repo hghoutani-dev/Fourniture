@@ -1,46 +1,60 @@
+import os
 import pickle
-
 import numpy as np
+import pandas as pd
 from flask import Flask, request, render_template
 
 app = Flask(__name__)
-model = pickle.load(open('model.pkl','rb'))
+
+# Base directory for resolving model file
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+model_path = os.path.join(BASE_DIR, 'model.pkl')
+
+FEATURE_COLUMNS = ['category', 'sellable_online', 'other_colors', 'depth', 'height', 'width']
+
+def get_model():
+    if os.path.exists(model_path):
+        with open(model_path, 'rb') as f:
+            return pickle.load(f)
+    elif os.path.exists('model.pkl'):
+        with open('model.pkl', 'rb') as f:
+            return pickle.load(f)
+    return None
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
-@app.route('/predict',methods=['POST'])
+@app.route('/predict', methods=['POST'])
 def predict():
-
     '''
-    For rendering results on HTML GUI
+    pour l'affichage sur html
     '''
+    model = get_model()
+    if model is None:
+        return render_template('index.html', prediction_text="Erreur : model.pkl est introuvable. Veuillez exécuter le notebook et placer model.pkl dans le dossier de l'application.")
 
-    features = request.form.to_dict()
-    features = list(features.values())
-    features = list(map(int, features))
-    print(features)
-    final_features = np.array(features).reshape(1,6)
-    prediction = model.predict(final_features)
+    try:
+        # Extract features safely supporting both floats and ints
+        category = float(request.form.get('category', 0))
+        sellable_online = float(request.form.get('sellable_online', 0))
+        other_colors = float(request.form.get('other_colors', 0))
+        depth = float(request.form.get('depth', 0))
+        height = float(request.form.get('height', 0))
+        width = float(request.form.get('width', 0))
 
-    #select = request.form.get('category')
-    output = round(prediction[0], 2)
+        features_df = pd.DataFrame(
+            [[category, sellable_online, other_colors, depth, height, width]],
+            columns=FEATURE_COLUMNS
+        )
+        print("Données d'entrée pour la prédiction :\n", features_df)
 
-    return render_template('index.html', prediction_text='Furniture prediction price is : $ {}'.format(output))
-'''
-@app.route('/predict_api',methods=['POST'])
-def predict_api():
+        prediction = model.predict(features_df)
+        output = round(float(prediction[0]), 2)
 
-    
-    For direct API calls through request
-    
+        return render_template('index.html', prediction_text=f'Furniture prediction price is : $ {output}')
+    except Exception as e:
+        return render_template('index.html', prediction_text=f'Erreur lors du calcul : {e}')
 
-    data = request.get_json(force=True)
-    prediction = model.predict([np.array(list(data.values()))])
-
-    output = prediction[0]
-    return jsonify(output)
-'''
 if __name__ == "__main__":
     app.run(debug=True)
